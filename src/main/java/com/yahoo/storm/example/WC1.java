@@ -38,7 +38,7 @@ import java.util.Random;
 /**
  * Basic word count topology.
  */
-public class WordCountTopology {
+public class WC1 {
   public static class RandomSentenceSpout extends BaseRichSpout {
     SpoutOutputCollector _collector;
     Random _rand;
