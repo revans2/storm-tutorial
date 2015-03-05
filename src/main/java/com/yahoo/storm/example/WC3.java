@@ -53,11 +53,16 @@ public class WC3 {
 
     @Override
     public void nextTuple() {
-      try { Thread.sleep(100); } catch (Exception e) {}
+      try { Thread.sleep(10); } catch (Exception e) {}
       String[] sentences = new String[]{ "the cow jumped over the moon", "an apple a day keeps the doctor away",
           "four score and seven years ago", "snow white and the seven dwarfs", "i am at two with nature" };
       String sentence = sentences[_rand.nextInt(sentences.length)];
-      _collector.emit(new Values(sentence, System.currentTimeMillis()));
+      long now = System.currentTimeMillis();
+      if (_rand.nextInt(100) >= 99) {
+        //Late Data
+        now = now - 2000;
+      }
+      _collector.emit(new Values(sentence, now));
     }
 
     @Override
@@ -159,7 +164,6 @@ public class WC3 {
     builder.setBolt("count", new WindowWordCount(), 12).fieldsGrouping("split", new Fields("word"));
 
     Config conf = new Config();
-    conf.setDebug(true);
 
     if (args != null && args.length > 0) {
       conf.setNumWorkers(3);
