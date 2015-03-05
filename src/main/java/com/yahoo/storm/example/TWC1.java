@@ -29,7 +29,6 @@ import storm.trident.operation.BaseFunction;
 import storm.trident.operation.TridentCollector;
 import storm.trident.operation.CombinerAggregator;
 import storm.trident.spout.IBatchSpout;
-import storm.trident.testing.MemoryMapState;
 import storm.trident.tuple.TridentTuple;
 
 import java.util.ArrayList;
@@ -129,7 +128,6 @@ public class TWC1 {
 
     Config conf = new Config();
     conf.setMaxSpoutPending(20);
-    conf.setDebug(true);
     if (args.length == 0) {
       LocalCluster cluster = new LocalCluster();
       cluster.submitTopology("wordCounter", conf, topology.build());
