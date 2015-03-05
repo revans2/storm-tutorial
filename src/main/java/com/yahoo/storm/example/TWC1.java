@@ -40,41 +40,43 @@ import java.util.Random;
 public class TWC1 {
   public static class RandomSentenceSpout implements IBatchSpout {
     private static final String[] sentences = new String[]{ "the cow jumped over the moon", "an apple a day keeps the doctor away",
-          "four score and seven years ago", "snow white and the seven dwarfs", "i am at two with nature" };
+          "four score and seven years ago", "snow white and the seven dwarfs", "i am at two with nature",
+          "a a a a a a a a a a a a a a a a a a a a a a a a a a a a", "a a a a a a a a a a a a a a a a a a a a a"};
 
-    int maxBatchSize = 3;
-    int index = 0;
+    int maxBatchSize = 10;
     Random _rand;
     HashMap<Long, List<List<Object>>> batches = new HashMap<Long, List<List<Object>>>();
     
     @Override
     public void open(Map conf, TopologyContext context) {
-      index = 0;
       _rand = new Random();
     }
 
     @Override
     public void emitBatch(long batchId, TridentCollector collector) {
         List<List<Object>> batch = this.batches.get(batchId);
-        if(batch == null){
-            batch = new ArrayList<List<Object>>();
-            if (index >= sentences.length) {
-                index = 0;
-            }
-            for (int i=0; index < sentences.length && i < maxBatchSize; index++, i++) {
-                String sentence = sentences[_rand.nextInt(sentences.length)];
-                batch.add(new Values(sentence));
-            }
-            this.batches.put(batchId, batch);
+        if (batch == null){
+          long now = System.currentTimeMillis();
+          if (_rand.nextInt(100) >= 50) {
+            //Late Data
+            now = now - 2000;
+          }
+
+          batch = new ArrayList<List<Object>>();
+          for (int i=0; i < maxBatchSize; i++) {
+            String sentence = sentences[_rand.nextInt(sentences.length)];
+            batch.add(new Values(sentence, now));
+          }
+          this.batches.put(batchId, batch);
         }
         for (List<Object> list : batch) {
-            collector.emit(list);
+          collector.emit(list);
         }
     }
 
     @Override
     public void ack(long batchId) {
-        this.batches.remove(batchId);
+      this.batches.remove(batchId);
     }
 
     @Override
@@ -83,12 +85,12 @@ public class TWC1 {
 
     @Override
     public Map getComponentConfiguration() {
-        return new Config();
+      return new Config();
     }
 
     @Override
     public Fields getOutputFields() {
-      return new Fields("sentence");
+      return new Fields("sentence", "time");
     }
   }
 
@@ -96,16 +98,18 @@ public class TWC1 {
     @Override
     public void execute(TridentTuple tuple, TridentCollector collector) {
       String sentence = tuple.getString(0);
+      Long time = tuple.getLong(1);
       for (String word : sentence.split("\\s+")) {
-        collector.emit(new Values(word));
+        Values v = new Values(word, time/1000, 1L);
+        collector.emit(v);
       }
     }
   }
 
-  public static class Count implements CombinerAggregator<Long> {
+  public static class Sum implements CombinerAggregator<Long> {
     @Override
     public Long init(TridentTuple tuple) {
-      return 1L;
+      return tuple.getLong(0);
     }
 
     @Override
@@ -122,12 +126,14 @@ public class TWC1 {
   public static void main(String[] args) throws Exception {
     RandomSentenceSpout spout = new RandomSentenceSpout();
     TridentTopology topology = new TridentTopology();
-    TridentState wordCounts = topology.newStream("spout1", spout).parallelismHint(16).each(new Fields("sentence"),
-        new Split(), new Fields("word")).groupBy(new Fields("word")).persistentAggregate(new MemoryMapState.Factory(),
-        new Count(), new Fields("count")).parallelismHint(16);
+    TridentState wordCounts = topology.newStream("spout1", spout).parallelismHint(1)
+        .each(new Fields("sentence", "time"), new Split(), new Fields("word", "bucket", "subcount"))
+        .groupBy(new Fields("word", "bucket"))
+        .persistentAggregate(new MemoryMapState.Factory(), new Fields("subcount"), new Sum(), new Fields("count")).parallelismHint(1);
 
     Config conf = new Config();
-    conf.setMaxSpoutPending(20);
+    //conf.setDebug(true);
+    conf.setMaxSpoutPending(1);
     if (args.length == 0) {
       LocalCluster cluster = new LocalCluster();
       cluster.submitTopology("wordCounter", conf, topology.build());
