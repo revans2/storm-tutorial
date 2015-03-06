@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.yahoo.storm.example;
+package com.yahoo.wc;
 
 import backtype.storm.Config;
 import backtype.storm.LocalCluster;

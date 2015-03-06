@@ -15,19 +15,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.yahoo.storm.example;
+package com.yahoo.wc;
 
 import backtype.storm.Config;
 import backtype.storm.LocalCluster;
 import backtype.storm.StormSubmitter;
 import backtype.storm.spout.SpoutOutputCollector;
 import backtype.storm.task.TopologyContext;
-import backtype.storm.task.OutputCollector;
 import backtype.storm.topology.BasicOutputCollector;
 import backtype.storm.topology.OutputFieldsDeclarer;
 import backtype.storm.topology.TopologyBuilder;
 import backtype.storm.topology.base.BaseBasicBolt;
-import backtype.storm.topology.base.BaseRichBolt;
 import backtype.storm.topology.base.BaseRichSpout;
 import backtype.storm.tuple.Fields;
 import backtype.storm.tuple.Tuple;
@@ -38,9 +36,9 @@ import java.util.Map;
 import java.util.Random;
 
 /**
- * Word Count topology over a window of time.
+ * Basic word count topology.
  */
-public class WC2 {
+public class WC1 {
   public static class RandomSentenceSpout extends BaseRichSpout {
     SpoutOutputCollector _collector;
     Random _rand;
@@ -57,7 +55,7 @@ public class WC2 {
       String[] sentences = new String[]{ "the cow jumped over the moon", "an apple a day keeps the doctor away",
           "four score and seven years ago", "snow white and the seven dwarfs", "i am at two with nature" };
       String sentence = sentences[_rand.nextInt(sentences.length)];
-      _collector.emit(new Values(sentence, System.currentTimeMillis()));
+      _collector.emit(new Values(sentence));
     }
 
     @Override
@@ -70,67 +68,43 @@ public class WC2 {
 
     @Override
     public void declareOutputFields(OutputFieldsDeclarer declarer) {
-      declarer.declare(new Fields("sentence", "time"));
+      declarer.declare(new Fields("sentence"));
     }
   }
 
   public static class SplitSentence extends BaseBasicBolt {
+
     @Override
     public void execute(Tuple tuple, BasicOutputCollector collector) {
       String sentence = tuple.getString(0);
-      Long time = tuple.getLong(1);
       for (String word: sentence.split("\\s+")) {
-        collector.emit(new Values(word, time));
+        collector.emit(new Values(word));
       }
     }
 
     @Override
     public void declareOutputFields(OutputFieldsDeclarer declarer) {
-      declarer.declare(new Fields("word", "time"));
+      declarer.declare(new Fields("word"));
     }
   }
 
-  public static class WindowWordCount extends BaseRichBolt {
-    private Map<Long, Map<String, Integer>> counts = new HashMap<Long, Map<String, Integer>>();
-    private OutputCollector collector;
+  public static class WordCount extends BaseBasicBolt {
+    Map<String, Integer> counts = new HashMap<String, Integer>();
 
     @Override
-    public void prepare(Map conf, TopologyContext context, OutputCollector collector) {
-        this.collector = collector;
-    }
-
-    @Override
-    public void execute(Tuple tuple) {
+    public void execute(Tuple tuple, BasicOutputCollector collector) {
       String word = tuple.getString(0);
-      Long time = tuple.getLong(1);
-      long bucket = time/1000;
-      long now = System.currentTimeMillis();
-      long currentBucket = now/1000;
-      long tooOld = currentBucket-20;
-      if (bucket <= tooOld) {
-          collector.fail(tuple);
-      } else {
-        Map<String, Integer> byWord = counts.get(bucket);
-        if (byWord == null) {
-          byWord = new HashMap<String, Integer>();
-          counts.put(bucket, byWord);
-        }
-        Integer count = byWord.get(word);
-        if (count == null) {
-          count = 0;
-        }
-        count++;
-        byWord.put(word, count);
-        System.out.println("RESULT: "+word+" "+bucket+" "+count);
-        collector.emit(tuple, new Values(word, bucket, count));
-        collector.ack(tuple);
-      }
-      counts.remove(tooOld);
+      Integer count = counts.get(word);
+      if (count == null)
+        count = 0;
+      count++;
+      counts.put(word, count);
+      collector.emit(new Values(word, count));
     }
 
     @Override
     public void declareOutputFields(OutputFieldsDeclarer declarer) {
-      declarer.declare(new Fields("word", "bucket", "count"));
+      declarer.declare(new Fields("word", "count"));
     }
   }
 
@@ -141,10 +115,11 @@ public class WC2 {
     builder.setSpout("spout", new RandomSentenceSpout(), 5);
 
     builder.setBolt("split", new SplitSentence(), 8).shuffleGrouping("spout");
-    builder.setBolt("count", new WindowWordCount(), 12).fieldsGrouping("split", new Fields("word"));
+    builder.setBolt("count", new WordCount(), 12).fieldsGrouping("split", new Fields("word"));
 
     Config conf = new Config();
     conf.setDebug(true);
+
 
     if (args != null && args.length > 0) {
       conf.setNumWorkers(3);
